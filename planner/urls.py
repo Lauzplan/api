@@ -5,16 +5,22 @@ from django.urls import path
 from planner.custom_decorators import access_private_garden, custom_login_required
 from .views import *
 
+from django.contrib import admin
+from django.views.decorators.csrf import csrf_exempt
+
+from planner.schemas import schema
+
 app_name = 'planner'
 
 urlpatterns = [
     path('', index, name='index'),
+    path("graphql", csrf_exempt(PrivateGraphQLView.as_view(graphiql=True, schema=schema))),
 
     # PWA offline page
     path('offline', PWAOfflineView.as_view(), name='pwa_offline_page'),
 
     # Authentications views
-    path('login', auth_views.login, {'template_name': 'planner/login.html'}, name='login'),
+    path('login', auth_views.LoginView.as_view(), {'template_name': 'planner/login.html'}, name='login'),
     path('signup', signup, name='signup'),
     path('garden_selection', custom_login_required(GardenSelectionView.as_view()), name='garden_selection'),
     path('logout', log_out, name="log_out"),

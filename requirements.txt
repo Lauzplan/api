@@ -1,10 +1,10 @@
 python_gantt==0.6.0
-Django==2.0.1
+Django==2.2
 django-model-utils==3.1.1
 virtualenv==15.1.0
 virtualenvwrapper-win==1.2.5
-Pillow==5.0.0
-psycopg2==2.7.3.2
+Pillow
+psycopg2==2.8
 django-crispy-forms==1.7.0
 selenium==3.9.0
 django-widget-tweaks==1.4.1
@@ -24,3 +24,5 @@ pyPdf2==1.26.0
 webencodings==0.5.1
 xhtml2pdf==0.2.1
 pypdf==1.13
+
+graphene_django

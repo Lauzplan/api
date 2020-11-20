@@ -15,3 +15,4 @@ from .contact_views import *
 from .pwa_views import *
 from .phytosanitary_views import *
 from .generic_views_overwritten import *
+from .private_graphql_api_view import *

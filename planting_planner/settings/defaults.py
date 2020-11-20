@@ -15,6 +15,7 @@ https://docs.djangoproject.com/en/2.0/ref/settings/
 
 import os
 import sys
+from datetime import timedelta
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 
@@ -45,7 +46,8 @@ INSTALLED_APPS = [
     'vegetables_library.apps.VegetablesLibraryConfig',
     'research.apps.ResearchConfig',
     'pwa',
-
+    'graphene_django',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
@@ -56,6 +58,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
 ]
 
 ROOT_URLCONF = 'planting_planner.urls'
@@ -99,7 +102,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/2.0/topics/i18n/
 
-LANGUAGE_CODE = 'fr_FR'
+LANGUAGE_CODE = 'fr'
 
 TIME_ZONE = 'UTC'
 
@@ -144,3 +147,8 @@ PWA_APP_ICONS = [
     }
 ]
 PWA_SERVICE_WORKER_PATH = os.path.join(BASE_DIR, 'serviceworker.js')
+
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000"
+]
