@@ -82,12 +82,12 @@ class COWithDate(CulturalOperation):
     absoluteDate = models.DateField(verbose_name=_('Date d\'échéance'))
 
     def get_date(self):
-        return self.absoluteDate
-
+        return self.absoluteDate   
 
 class Parcel(models.Model):
     name = models.CharField(max_length=NAME_MAX_LENGTH, verbose_name="Nom")
     garden = models.ForeignKey(Garden, on_delete=models.CASCADE)
+    geometry = models.JSONField(null=True)
 
     def __str__(self):
         return self.name

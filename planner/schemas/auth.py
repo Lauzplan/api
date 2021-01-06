@@ -2,9 +2,7 @@
     graphene schemas related to users and authentication managment
 """
 import graphene
-import graphql_jwt
 from graphene_django import DjangoObjectType, DjangoListField
-from graphql_jwt.decorators import login_required
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth import authenticate, login, logout
