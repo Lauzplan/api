@@ -6,7 +6,7 @@ from django.views import View
 from django.views.generic import TemplateView, FormView
 
 from .generic_views_overwritten import OperationsOnAlertViews
-from planner import queries, services, generate_pdf_helper
+from planner import queries, services
 from planner.forms import ForthcomingOperationsDelayForm
 from planner.models import Garden, Vegetable, Bed, ForthcomingOperation, Parcel
 
@@ -118,10 +118,4 @@ class PrintForthcomingOperations(FormView):
         int_period = int(days_period)
         operations_to_print = queries.get_alert_within_notification_period(garden_id, int_period)
 
-        return generate_pdf_helper.render_html_template_to_pdf(
-            'planner/printable/print_forthcoming_operations_template.html',
-            {
-                'pagesize': 'A4',
-                'operations': operations_to_print,
-                'garden_id': garden_id,
-            })
+        return None

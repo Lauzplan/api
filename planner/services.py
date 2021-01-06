@@ -2,7 +2,7 @@ from datetime import timedelta, date
 
 from planner.models import CulturalOperation, ForthcomingOperation, COWithOffset, Operation, History, \
     HistoryItem, Bed, CultivatedArea
-from planner.templatetags.planner_extras import register
+
 
 
 def add_new_plantation_to_alerts(garden, vegetable_id, label, surface_id):
@@ -23,7 +23,7 @@ def add_new_plantation_to_alerts(garden, vegetable_id, label, surface_id):
         return True
 
 
-@register.filter
+
 def get_due_date(alert, alert_history):
     """ Return the due date of the alert, knowing the alert history (due date is computed from
     previous operations in history for cultural operations with offset """

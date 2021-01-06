@@ -5,7 +5,7 @@ from django.shortcuts import render
 from django.views import View
 
 from planner import queries
-from planner.generate_pdf_helper import render_html_template_to_pdf
+
 from planner.models import Garden, Bed, CultivatedArea
 
 
@@ -30,13 +30,7 @@ class PrintQRView(View):
         for b in beds:
             urls[b] = self.request.build_absolute_uri(
                 reverse('planner:qr_bed_view', kwargs={'garden_id': garden.id, 'pk': b.id}))
-        return render_html_template_to_pdf(
-            self.template_name,
-            {
-                'pagesize': 'A4',
-                'beds': beds,
-                'urls': urls
-            })
+        return None
 
 
 class OperationByAreaQRView(TemplateView):

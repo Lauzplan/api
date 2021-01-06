@@ -5,7 +5,6 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
 from django.urls import reverse
-from model_utils.managers import InheritanceManager
 from django.utils.translation import gettext_lazy as _
 
 from vegetables_library import models as library_models
@@ -56,7 +55,6 @@ class Vegetable(models.Model):
 
 
 class CulturalOperation(models.Model):
-    objects = InheritanceManager()
     name = models.CharField(max_length=NAME_MAX_LENGTH, verbose_name=_('Nom de l\'action'))
     vegetable = models.ForeignKey(Vegetable, on_delete=models.CASCADE, verbose_name=_('Légume concerné'))
     duration = models.DurationField(verbose_name=_('Temps nécessaire par m²'), default=timedelta(seconds=0))
@@ -171,7 +169,6 @@ class History(models.Model):
 
 
 class HistoryItem(models.Model):
-    objects = InheritanceManager()
     history = models.ForeignKey(History, on_delete=models.CASCADE)
     execution_date = models.DateField(verbose_name="Date d'exécution")
     executor = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
