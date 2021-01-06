@@ -3,7 +3,8 @@
 """
 import graphene
 from graphene_django import DjangoObjectType, DjangoListField
-from graphql_jwt.decorators import login_required
+from graphene_gis.converter import gis_converter
+import json
 
 from planner.models import Bed, Parcel, Garden
 from planner.models import History, HistoryItem
@@ -54,8 +55,6 @@ class UpdateGarden(graphene.Mutation):
     garden = graphene.Field(GardenType)
 
     def mutate(self, info, id, name):
-        print("muuuutaaaationnnn")
-        print(name)
         garden = Garden.objects.get(id=id)
         garden.name = name
         garden.save()
@@ -66,27 +65,65 @@ class CreateGarden(graphene.Mutation):
         name = graphene.String(required=True)
         postal_code = graphene.String(required=True)
     
-    garden = graphene.Field(GardenType)
+    Output = GardenType
 
     def mutate(self, info, name, postal_code):
         new_garden = Garden.objects.create(name=name, postal_code=postal_code)
         new_garden.users.add(info.context.user)
-        return CreateGarden(garden=new_garden)
+        return new_garden
 
 class CreateParcel(graphene.Mutation):
     class Arguments:
         garden_id = graphene.ID(required=True)
         name = graphene.String(required=True)
+        geometry = graphene.String(required=True)
     
-    parcel = graphene.Field(ParcelType)
+    Output = ParcelType
 
-    def mutate(self, info, garden_id, name):
+    def mutate(self, info, garden_id, name, geometry):
         garden = Garden.objects.get(id=garden_id)
-        parcel = Parcel.objects.create(garden=garden, name=name)
-        return CreateParcel(parcel=parcel)
+        parcel = Parcel.objects.create(garden=garden, name=name, geometry=json.loads(geometry))
+        return parcel
+
+class UpdateParcel(graphene.Mutation):
+    class Arguments:
+        id = graphene.ID(required=True)
+        name = graphene.String(required=False)
+        geometry = graphene.String(required=False)
+
+    Output = ParcelType
+    def mutate(self, info, id, name = None, geometry = None):
+        parcel = Parcel.objects.get(id=id)
+        if(name is not None):
+            parcel.name = name
+        if(geometry is not None):
+            parcel.geometry = json.loads(geometry)
+        
+        parcel.save()
+        return parcel
+
+class DeleteParcel(graphene.Mutation):
+    class Arguments:
+        id = graphene.ID(required=True)
+
+    ok = graphene.Boolean(required=True)
+
+    def mutate(self, info, id):
+        parcel = Parcel.objects.get(id=id)
+        if parcel is not None:
+            parcel.delete()
+            return DeleteParcel(ok=True)
+        
+        return DeleteParcel(ok=False)
 
 class Query(graphene.ObjectType):
     gardens = graphene.List(GardenType)
+    garden = graphene.Field(GardenType, id=graphene.ID(required=True))
+
+    def resolve_garden (self, info, id):
+        user = info.context.user
+        queryset = Garden.objects.all()
+        return Garden.objects.get(users=user, id=id)
 
     def resolve_gardens(self, info):
         user = info.context.user
@@ -101,3 +138,5 @@ class Mutation(graphene.ObjectType):
     create_garden = CreateGarden.Field()
     create_parcel = CreateParcel.Field()
     update_garden = UpdateGarden.Field()
+    update_parcel = UpdateParcel.Field()
+    delete_parcel = DeleteParcel.Field()

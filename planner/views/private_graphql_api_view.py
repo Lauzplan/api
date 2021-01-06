@@ -51,7 +51,13 @@ class PrivateGraphQLView(GraphQLView):
 
         user_infos = r.json()
 
-        request.user = get_user_model().objects.get(username=user_infos['nickname'])
+        UserModel = get_user_model()
+        
+        try:
+            request.user = UserModel.objects.get(username=user_infos['nickname'])
+        except UserModel.DoesNotExist:
+            request.user = UserModel.objects.create(username=user_infos['nickname'], email=user_infos['email'])
+            request.user.set_unusable_password()
 
         if token_info is not None:
             return super().dispatch(request, *args, **kwargs)
