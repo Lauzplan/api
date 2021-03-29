@@ -8,13 +8,16 @@ ALLOWED_HOSTS = []
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
 
+GDAL_LIBRARY_PATH = "/Applications/Postgres.app/Contents/Versions/13/lib/libgdal.dylib"
+GEOS_LIBRARY_PATH = "/Applications/Postgres.app/Contents/Versions/13/lib/libgeos_c.dylib"
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
+        'ENGINE': 'django.contrib.gis.db.backends.postgis',
         'NAME': 'planting_planner_db',
         'USER': 'postgres',
         'PASSWORD': 'azerty',
-        'HOST': '',
+        'HOST': '127.0.0.1',
         'PORT': '5432'
     },
     'db_vegetables_library': {
@@ -22,7 +25,7 @@ DATABASES = {
         'NAME': 'vegetable_library_db',
         'USER': 'postgres',
         'PASSWORD': 'azerty',
-        'HOST': '',
+        'HOST': '127.0.0.1',
         'PORT': '5432'
     }
 }

@@ -5,8 +5,6 @@ import graphene
 from graphene_django import DjangoObjectType, DjangoListField
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth import authenticate, login, logout
-
 
 class UserType(DjangoObjectType):
     """
@@ -20,12 +18,14 @@ class UserType(DjangoObjectType):
     def resolve_is_researcher(self, _):
         return self.has_perm('research.is_researcher')
 
+
 class Query(graphene.ObjectType):
     users = DjangoListField(UserType)
     me = graphene.Field(UserType)
 
     def resolve_me(self, info):
         return info.context.user
+
 
 class Mutation(graphene.ObjectType):
     pass

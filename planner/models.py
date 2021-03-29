@@ -1,23 +1,31 @@
 from datetime import timedelta
+from math import inf
 
-from django.contrib.auth.models import User
+from django.conf import settings
+from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db import models, transaction
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from django.contrib.gis.db import models
+from shapely import wkb
+
+from django.contrib.gis.geos import Polygon
 
 from vegetables_library import models as library_models
 
 NAME_MAX_LENGTH = 200
 TYPE_MAX_LENGTH = 100
+USER_ID_LENGTH = 128
 
+class User(AbstractUser):
+    id = models.CharField(unique=True, primary_key=True, max_length=USER_ID_LENGTH)
 
 class Garden(models.Model):
     name = models.CharField(unique=True, max_length=NAME_MAX_LENGTH, verbose_name="Nom du jardin")
     postal_code = models.IntegerField(validators=[MaxValueValidator(9999), MinValueValidator(1000)],
                                       verbose_name="Code postal")
-    users = models.ManyToManyField(User)
+    users = models.ManyToManyField(settings.AUTH_USER_MODEL)
     reference_email = models.EmailField(_('email address'), blank=True)
     notification_delay = models.IntegerField(default=5)
     comment = models.TextField(blank=True, default="", verbose_name="Description libre du jardin")
@@ -87,7 +95,14 @@ class COWithDate(CulturalOperation):
 class Parcel(models.Model):
     name = models.CharField(max_length=NAME_MAX_LENGTH, verbose_name="Nom")
     garden = models.ForeignKey(Garden, on_delete=models.CASCADE)
-    geometry = models.JSONField(null=True)
+    geometry = models.PolygonField(geography=True)
+    orientation_segment = models.IntegerField(default=0)
+
+    class Meta:
+        db_constraints = {
+        'geometery_one_ring': 'CHECK (ST_NRings(geometry::geometry) = 1)',
+        "no_concave_geometry" : "CHECK (ST_equals(ST_ConvexHull(ST_Boundary(geometry::geometry)), geometry::geometry))"
+        }
 
     def __str__(self):
         return self.name
@@ -97,40 +112,7 @@ class Bed(models.Model):
     garden = models.ForeignKey(Garden, on_delete=models.CASCADE)
     parcel = models.ForeignKey(Parcel, on_delete=models.CASCADE, null=True, verbose_name="Parcelle")
     name = models.CharField(max_length=NAME_MAX_LENGTH, verbose_name='Nom')
-    length = models.IntegerField(verbose_name='Longueur (cm)')
-    width = models.IntegerField(verbose_name='Largeur (cm)')
-
-    comment = models.TextField(blank=True, default="", verbose_name='Commentaire éventuel')
-    soil_type = models.CharField(max_length=TYPE_MAX_LENGTH, blank=True, default="", verbose_name='Type de sol')
-
-    NORTH = 'N'
-    SOUTH = 'S'
-    WEST = 'O'
-    EAST = 'E'
-    NE = 'NE'
-    SE = 'SE'
-    SW = 'SO'
-    NW = 'NO'
-    EXPOSITION_CHOICES = (
-        (NORTH, 'Nord'),
-        (SOUTH, 'Sud'),
-        (WEST, 'Ouest'),
-        (EAST, 'Est'),
-        (NE, 'Nord-Est'),
-        (SE, 'Sud-Est'),
-        (SW, 'Sud-Ouest'),
-        (NW, 'Nord-Ouest')
-    )
-
-    exposition = models.CharField(max_length=2, choices=EXPOSITION_CHOICES, default=NORTH, verbose_name='Exposition')
-
-    # The following properties are specific to the graphic representation of the Bed
-    x = models.IntegerField(verbose_name='Coodinate X of upper-left corner of the rectangle', default=0)
-    y = models.IntegerField(verbose_name='Coordinate Y of upper-left corner of the rectangle', default=0)
-
-    @property
-    def get_area(self):
-        return (self.length * self.width) / 10000  # Division to have m² instead of cm²
+    geometry = models.PolygonField(default=Polygon())
 
     def __str__(self):
         return self.name + " : " + str(self.length) + "x" + str(self.width)
@@ -145,7 +127,7 @@ class CultivatedArea(models.Model):
     # Following attributes are related to the harvest of this cultivated area
     is_active = models.BooleanField(default=True)  # Set to false when we harvest this cropping
     harvest_date = models.DateField(null=True, verbose_name="Date de récolte")
-    executor = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
+    executor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True)
     kg_produced = models.IntegerField(blank=True, default=0, verbose_name="Quantité récoltée (kg)")
     total_selling_price = models.IntegerField(blank=True, default=0, verbose_name="Prix de vente total (€)")
 
@@ -171,7 +153,7 @@ class History(models.Model):
 class HistoryItem(models.Model):
     history = models.ForeignKey(History, on_delete=models.CASCADE)
     execution_date = models.DateField(verbose_name="Date d'exécution")
-    executor = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
+    executor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True)
     area_concerned = models.ForeignKey(CultivatedArea, on_delete=models.SET_NULL, blank=True, null=True,
                                        verbose_name="Culture concernée")
 
