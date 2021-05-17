@@ -8,23 +8,21 @@ import os
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '130.104.12.56', 'lauzeplan.sipr.ucl.ac.be']
-
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'lauzeplan',
-        'USER': 'lauzeplan',
-        'PASSWORD': 'Jd5uHTFg',
-        'HOST': 'pgsql.uclouvain.be',
-        'PORT': '5440',
+        'ENGINE': 'django.contrib.gis.db.backends.postgis',
+        'NAME': 'planting_planner_db',
+        'USER': 'student',
+        'PASSWORD': 'azerty',
+        'HOST': '127.0.0.1',
+        'PORT': '5432',
     },
-    'db_vegetables_library': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'lauzeplan_library',
-        'USER': 'lauzeplan',
-        'PASSWORD': 'Jd5uHTFg',
-        'HOST': 'pgsql.uclouvain.be',
-        'PORT': '5440'
-    }
 }
+
+CORS_ALLOWED_ORIGINS = [
+    "https://tfe-moffarts.info.ucl.ac.be",
+    "http://localhost:3000",
+]
+
+ALLOWED_HOSTS = ['tfe-moffarts.info.ucl.ac.be', 'localhost:3000']
+
