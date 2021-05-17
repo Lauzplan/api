@@ -12,26 +12,37 @@ from shapely import wkb
 
 from django.contrib.gis.geos import Polygon
 
-from vegetables_library import models as library_models
+from common.models import BaseSpecies, BaseVariety, BaseOperation
+from django.db.models.functions import Cast
+from django.contrib.gis.db.models.functions import Area, AsGeoJSON, Transform
+import requests
+from shapely import wkt
+from arcgis.geometry import Geometry
+
+
+from functools import reduce
 
 NAME_MAX_LENGTH = 200
 TYPE_MAX_LENGTH = 100
 USER_ID_LENGTH = 128
 
+
 class User(AbstractUser):
-    id = models.CharField(unique=True, primary_key=True, max_length=USER_ID_LENGTH)
+    pass
+
+
+class WithAreaManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().annotate(_area=Area('geometry'))
+
 
 class Garden(models.Model):
-    name = models.CharField(unique=True, max_length=NAME_MAX_LENGTH, verbose_name="Nom du jardin")
-    postal_code = models.IntegerField(validators=[MaxValueValidator(9999), MinValueValidator(1000)],
-                                      verbose_name="Code postal")
+    class Meta:
+        default_related_name = "gardens"
+
+    name = models.CharField(max_length=NAME_MAX_LENGTH, verbose_name="Nom du jardin")
     users = models.ManyToManyField(settings.AUTH_USER_MODEL)
-    reference_email = models.EmailField(_('email address'), blank=True)
-    notification_delay = models.IntegerField(default=5)
-    comment = models.TextField(blank=True, default="", verbose_name="Description libre du jardin")
-    soil_type = models.CharField(max_length=TYPE_MAX_LENGTH, blank=True, default="", verbose_name='Type de sol')
-    culture_type = models.CharField(max_length=TYPE_MAX_LENGTH, blank=True, default="",
-                                    verbose_name='Type d\'agriculture pratiquée sur ce jardin')
+
     # Confidentiality fields, if set to true, the garden's data are accessible for research
     details_available_for_research = models.BooleanField(default=True,
                                                          verbose_name="J'accepte que les données de mon jardin soient accessibles pour la recherche universitaire")
@@ -41,8 +52,30 @@ class Garden(models.Model):
     def __str__(self):
         return "Garden: " + self.name
 
-    def get_absolute_url(self):
-        return reverse('planner:alerts_view', kwargs={'garden_id': self.id})
+
+class Species(BaseSpecies):
+    garden = models.ForeignKey(Garden, on_delete=models.CASCADE)
+
+
+class Variety(BaseVariety):
+    pass
+
+
+class Operation(BaseOperation):
+    pass
+
+
+class PerformedOperation(models.Model):
+    class Meta:
+        default_related_name = "performed_operations"
+
+    operation = models.ForeignKey(Operation, on_delete=models.CASCADE)
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+
+    @property
+    def duration(self):
+        return self.end_time - self.start_time
 
 
 class Vegetable(models.Model):
@@ -62,60 +95,97 @@ class Vegetable(models.Model):
         unique_together = ('name', 'variety', 'garden')
 
 
-class CulturalOperation(models.Model):
-    name = models.CharField(max_length=NAME_MAX_LENGTH, verbose_name=_('Nom de l\'action'))
-    vegetable = models.ForeignKey(Vegetable, on_delete=models.CASCADE, verbose_name=_('Légume concerné'))
-    duration = models.DurationField(verbose_name=_('Temps nécessaire par m²'), default=timedelta(seconds=0))
-
-    def get_date(self):
-        pass
-
-    def __str__(self):
-        return self.vegetable.name + " : " + self.name
-
-
-class COWithOffset(CulturalOperation):
-    offset_in_days = models.IntegerField(verbose_name=_('Délai en jours'))
-    previous_operation = models.ForeignKey(CulturalOperation, related_name='+', on_delete=models.CASCADE,
-                                           verbose_name=_('Opération précédente'))
-
-    def get_previous_operation(self):
-        return CulturalOperation.objects.select_subclasses().get(pk=self.previous_operation.id)
-
-    def get_date(self):
-        return self.get_previous_operation().get_date() + timedelta(days=self.offset_in_days)
-
-
-class COWithDate(CulturalOperation):
-    absoluteDate = models.DateField(verbose_name=_('Date d\'échéance'))
-
-    def get_date(self):
-        return self.absoluteDate   
-
 class Parcel(models.Model):
+    class Meta:
+        db_constraints = {
+            'geometery_one_ring': 'CHECK (ST_NRings(geometry::geometry) = 1)',
+            "no_concave_geometry": "CHECK (ST_equals(ST_ConvexHull(ST_Boundary(geometry::geometry)), geometry::geometry))"
+        }
+        default_related_name = "parcels"
+
     name = models.CharField(max_length=NAME_MAX_LENGTH, verbose_name="Nom")
     garden = models.ForeignKey(Garden, on_delete=models.CASCADE)
     geometry = models.PolygonField(geography=True)
     orientation_segment = models.IntegerField(default=0)
 
-    class Meta:
-        db_constraints = {
-        'geometery_one_ring': 'CHECK (ST_NRings(geometry::geometry) = 1)',
-        "no_concave_geometry" : "CHECK (ST_equals(ST_ConvexHull(ST_Boundary(geometry::geometry)), geometry::geometry))"
+    class Manager(models.Manager):
+        def get_queryset(self):
+            return super().get_queryset().annotate(_area=Area('geometry'), geom=Cast('geometry', output_field=models.GeometryField()), transformed=Transform('geom', 31370))
+
+    objects = Manager()
+
+    @property
+    def area(self):
+        return round(self._area.sq_m)
+
+    def cultivable_area(self):
+        return reduce(lambda acc, bed: acc + bed.area, self.beds.all(), 0)
+
+    def soil_type(self):
+        esriPolygon = {
+            "spatialReference": {
+                "wkid": 31370
+            },
+            "rings":
+            [[list(p) for p in r] for r in self.transformed.coords]
         }
+
+        response = requests.get(
+            f"https://geoservices.wallonie.be/arcgis/rest/services/SOL_SOUS_SOL/CNSW__PRINC_TYPES_SOLS/MapServer/identify?f=json&geometry={esriPolygon}&tolerance=0&mapExtent={self.transformed.extent}&sr=31370&imageDisplay=1,1,1&layers=all&geometryType=esriGeometryPolygon&geometryPrecision=4"
+        )
+
+        if not response.ok:
+            raise Exception('Could not define the soil type')
+
+        if "error" in response.json().keys():
+            raise Exception(response.json())
+
+        soil_type_data = {}
+        geom = wkt.loads(self.transformed.wkt)
+        for data in response.json()["results"]:
+            geometry = wkt.loads(Geometry(data["geometry"]).WKT)
+            code = data["attributes"]["CODE"]
+            soil_type_data[code] = {
+                "code": code,
+                "description": data["attributes"]["DESCRIPTION"],
+                "area": 0
+            }
+            for p in geometry:
+                intersection = p.intersection(geom)
+                soil_type_data[code]["area"] += intersection.area
+
+        for val in soil_type_data.values():
+            val["proportion"] = val["area"] / geom.area
+
+        return soil_type_data.values()
 
     def __str__(self):
         return self.name
 
 
 class Bed(models.Model):
+    class Meta:
+        default_related_name = "beds"
+
     garden = models.ForeignKey(Garden, on_delete=models.CASCADE)
     parcel = models.ForeignKey(Parcel, on_delete=models.CASCADE, null=True, verbose_name="Parcelle")
     name = models.CharField(max_length=NAME_MAX_LENGTH, verbose_name='Nom')
-    geometry = models.PolygonField(default=Polygon())
+    geometry = models.PolygonField(geography=True)
+
+    class Manager(models.Manager):
+
+        def get_queryset(self):
+            return super().get_queryset().annotate(_area=Area('geometry'), _geoJSON=AsGeoJSON('geometry'))
+
+    objects = Manager()
+
+    @property
+    def area(self):
+        print("area", self._area)
+        return round(self._area.sq_m)
 
     def __str__(self):
-        return self.name + " : " + str(self.length) + "x" + str(self.width)
+        return self.name
 
 
 class CultivatedArea(models.Model):
@@ -135,17 +205,6 @@ class CultivatedArea(models.Model):
         return self.label + ' - ' + self.surface.name
 
 
-class ForthcomingOperation(models.Model):
-    area_concerned = models.ForeignKey(CultivatedArea, on_delete=models.CASCADE)
-    original_cultural_operation = models.ForeignKey(CulturalOperation, on_delete=models.CASCADE)
-    postponement = models.IntegerField(default=0)
-    execution_date = models.DateField(blank=True, null=True)
-    is_done = models.BooleanField(default=False)
-
-    def __str__(self):
-        return str(self.area_concerned.label) + " " + str(self.original_cultural_operation)
-
-
 class History(models.Model):
     garden = models.OneToOneField(Garden, on_delete=models.CASCADE)
 
@@ -159,15 +218,9 @@ class HistoryItem(models.Model):
 
 
 class Observation(HistoryItem):
+    class Meta:
+        default_related_name = "observations"
     description = models.TextField(verbose_name="Description")
-
-
-class Operation(HistoryItem):
-    name = models.CharField(max_length=NAME_MAX_LENGTH, verbose_name="Nom de l'opération")
-    note = models.TextField(blank=True, default="")
-    duration = models.DurationField(blank=True, null=True, verbose_name="Durée")
-    is_deletion = models.BooleanField(default=False)
-    original_alert = models.ForeignKey(ForthcomingOperation, on_delete=models.SET_NULL, blank=True, null=True)
 
 
 KILO = 'kg'
@@ -179,22 +232,3 @@ UNITY_CHOICES = (
     (GRAM, GRAM),
     (LITER, LITER),
 )
-
-
-class IncomingPhytosanitaire(models.Model):
-    garden = models.ForeignKey(Garden, on_delete=models.CASCADE)
-    commercial_name = models.CharField(max_length=NAME_MAX_LENGTH, verbose_name="Nom commercial du produit")
-    quantity = models.DecimalField(max_digits=13, decimal_places=3, verbose_name="Quantité")
-    unity = models.CharField(max_length=2, choices=UNITY_CHOICES, verbose_name="Unité")
-    receipt_date = models.DateField(verbose_name="Date de réception")
-    supplier = models.CharField(max_length=NAME_MAX_LENGTH, verbose_name="Identification de l'unité fournissant le produit")
-
-
-class PhytosanitaireUsage(models.Model):
-    garden = models.ForeignKey(Garden, on_delete=models.CASCADE)
-    commercial_name = models.CharField(max_length=NAME_MAX_LENGTH, verbose_name="Nom commercial du produit")
-    usage_date = models.DateField(verbose_name="Date d'application")
-    dose_used = models.DecimalField(max_digits=13, decimal_places=3,verbose_name="Dose utilisée")
-    unity = models.CharField(max_length=2, choices=UNITY_CHOICES, verbose_name="Unité")
-    crop_treated = models.ForeignKey(CultivatedArea, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Culture traitée")
-    comment = models.TextField(verbose_name="Commentaire éventuel", null=True, blank=True)

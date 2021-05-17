@@ -1,9 +1,0 @@
-plugins:
-  pep8:
-    enabled: true
-
-exclude_patterns:
-  - "**/test/"
-  - "**/tests/"
-  - "**/migrations/"
-  - "**/static/admin/"

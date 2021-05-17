@@ -2,27 +2,18 @@
     Graphene schemas for the structure of the garden
 """
 import graphene
-from graphql.language import ast
 from django.contrib.auth import get_user_model
-from graphql import GraphQLError
 from graphene_django import DjangoObjectType
-from graphene_gis.converter import gis_converter
-from graphene_gis import scalars
+from graphene_gis import converter
 
 from planner.models import Bed, Parcel, Garden
-from planner.models import History, HistoryItem
-from .history import HistoryItemType
 from itertools import tee
 from shapely import wkt
 from shapely.geometry import LineString, Point, box, MultiLineString
 
 from django.contrib.gis.geos import GEOSGeometry
-from shapely.geometry import mapping
-from arcgis.geometry import Geometry
-
-from shapely.ops import transform
 import pyproj
-import requests
+from graphene_gis_extension.scalars import PolygonScalar, LineStringScalar
 
 wgs84 = pyproj.CRS('EPSG:4326')
 utm = pyproj.CRS('EPSG:31370')
@@ -126,17 +117,6 @@ def create_beds(parcel, start_segment, bed_width, bed_spacing):
     return web_mercator_geos
 
 
-class LineStringScalar(scalars.LineStringScalar):
-    @classmethod
-    def parse_literal(cls, node):
-        assert isinstance(node, ast.StringValue)
-        return GEOSGeometry(node.value)
-
-    @classmethod
-    def parse_value(cls, value):
-        return GEOSGeometry(value)
-
-
 class GardenType(DjangoObjectType):
     """
         The whole cultural area that a gardner has
@@ -173,56 +153,13 @@ class ParcelType(DjangoObjectType):
     cultivable_area = graphene.Int()
 
     def resolve_cultivable_area(self, info):
-        beds = Bed.objects.filter(parcel=self)
-        area = 0
-        for b in beds:
-            geom = b.geometry.transform(31370, clone=True)
-            area += geom.area
-        return round(area)
+        return self.cultivable_area()
 
     def resolve_area(self, info):
-        return round(self.geometry.transform(31370, clone=True).area)
+        return self.area
 
     def resolve_soil_type(self, info):
-        parcel_geometry = transform(project, wkt.loads(self.geometry.wkt))
-
-        geometry_map = mapping(parcel_geometry)
-
-        esriPolygon = {
-            "spatialReference": {
-                "wkid": 31370
-            },
-            "rings":
-            [[list(p) for p in r] for r in geometry_map["coordinates"]]
-        }
-
-        response = requests.get(
-            f"https://geoservices.wallonie.be/arcgis/rest/services/SOL_SOUS_SOL/CNSW__PRINC_TYPES_SOLS/MapServer/identify?f=json&geometry={esriPolygon}&tolerance=0&mapExtent={parcel_geometry.bounds}&sr=31370&imageDisplay=1,1,1&layers=all&geometryType=esriGeometryPolygon&geometryPrecision=4"
-        )
-
-        if not response.ok:
-            raise GraphQLError('Could not define the soil type')
-
-        if "error" in response.json().keys():
-            raise GraphQLError(response.json())
-
-        soil_type_data = {}
-        for data in response.json()["results"]:
-            geometry = wkt.loads(Geometry(data["geometry"]).WKT)
-            code = data["attributes"]["CODE"]
-            soil_type_data[code] = {
-                "code": code,
-                "description": data["attributes"]["DESCRIPTION"],
-                "area": 0
-            }
-            for p in geometry:
-                intersection = p.intersection(parcel_geometry)
-                soil_type_data[code]["area"] += intersection.area
-
-        for val in soil_type_data.values():
-            val["proportion"] = val["area"] / parcel_geometry.area
-
-        return soil_type_data.values()
+        return self.soil_type()
 
 
 class BedType(DjangoObjectType):
@@ -235,8 +172,7 @@ class BedType(DjangoObjectType):
     area = graphene.Int()
 
     def resolve_area(self, info):
-
-        return round(self.geometry.transform(31370, clone=True).area)
+        return self.area
 
 
 class UpdateGarden(graphene.Mutation):
@@ -244,24 +180,23 @@ class UpdateGarden(graphene.Mutation):
         id = graphene.ID(required=True)
         name = graphene.String(required=True)
 
-    garden = graphene.Field(GardenType)
+    Output = GardenType
 
     def mutate(self, info, id, name):
         garden = Garden.objects.get(id=id)
         garden.name = name
         garden.save()
-        return UpdateGarden(garden)
+        return garden
 
 
 class CreateGarden(graphene.Mutation):
     class Arguments:
         name = graphene.String(required=True)
-        postal_code = graphene.String(required=True)
 
     Output = GardenType
 
-    def mutate(self, info, name, postal_code):
-        new_garden = Garden.objects.create(name=name, postal_code=postal_code)
+    def mutate(self, info, name):
+        new_garden = Garden.objects.create(name=name)
         new_garden.users.add(info.context.user)
         return new_garden
 
@@ -276,6 +211,8 @@ class CreateParcel(graphene.Mutation):
 
     def mutate(self, info, garden_id, name, geometry):
         garden = Garden.objects.get(id=garden_id)
+        if garden is None:
+            return None
         parcel = Parcel.objects.create(garden=garden,
                                        name=name,
                                        geometry=geometry)
@@ -286,8 +223,7 @@ class UpdateParcel(graphene.Mutation):
     class Arguments:
         id = graphene.ID(required=True)
         name = graphene.String(required=False)
-        geometry = graphene.String(required=False)
-
+        geometry = graphene.String(required=True)
     Output = ParcelType
 
     def mutate(self, info, id, name=None, geometry=None):
@@ -308,9 +244,8 @@ class DeleteParcel(graphene.Mutation):
     ok = graphene.Boolean(required=True)
 
     def mutate(self, info, id):
-        parcel = Parcel.objects.get(id=id)
-        if parcel is not None:
-            parcel.delete()
+        deletion = Parcel.objects.get(id=id).delete()
+        if deletion > 0:
             return DeleteParcel(ok=True)
 
         return DeleteParcel(ok=False)
@@ -327,7 +262,7 @@ class SelectOrientation(graphene.Mutation):
 
     def mutate(self, info, parcel_id, start_segment, bed_width, bed_spacing):
         parcel = Parcel.objects.get(id=parcel_id)
-        Bed.objects.filter(parcel=parcel).delete()
+        Bed.objects.filter(parcel__id=parcel_id).delete()
         beds_geometry = create_beds(parcel, start_segment, bed_width,
                                     bed_spacing)
         beds = map(
@@ -346,6 +281,12 @@ class Query(graphene.ObjectType):
 
     def resolve_garden(self, info, id):
         user = info.context.user
+        print(user)
+        if(user.is_superuser):
+            print("here")
+            return Garden.objects.get(id=id)
+        
+        print("KO")
         return Garden.objects.get(users=user, id=id)
 
     def resolve_gardens(self, info):

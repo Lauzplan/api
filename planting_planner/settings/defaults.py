@@ -28,7 +28,11 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECRET_KEY = '!$7dn!n^&135_2t#ias6prynu$^imar-(f=(&#%$m&$6329qm1'
 
 AUTH_USER_MODEL = 'planner.User'
-AUTHENTICATION_BACKENDS = ['planner.auth0_authenticator.MyBackend']
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'django.contrib.auth.backends.RemoteUserBackend',
+]
 
 # Application definition
 
@@ -42,10 +46,13 @@ INSTALLED_APPS = [
     'django.contrib.gis',
     'planner.apps.PlannerConfig',
     'vegetables_library.apps.VegetablesLibraryConfig',
+    'common.apps.CommonConfig',
     'graphene_django',
     'corsheaders',
     'django_db_constraints',
     'graphene_gis',
+    'rest_framework',
+    'graphene_gis_extension'
 ]
 
 MIDDLEWARE = [
@@ -54,6 +61,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.auth.middleware.RemoteUserMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -124,8 +132,34 @@ GRAPH_MODELS = {
     'group_models': True,
 }
 
-DATABASE_ROUTERS = ['vegetables_library.dbRouter.VegetablesLibraryDBRouter']
-
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000"
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_jwt.authentication.JSONWebTokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ),
+}
+
+JWT_AUTH = {
+    'JWT_PAYLOAD_GET_USERNAME_HANDLER':
+        'planner.utils.jwt_get_username_from_payload_handler',
+    'JWT_PAYLOAD_GET_USER_ID_HANDLER':
+        'planner.utils.jwt_get_username_from_payload_handler',
+    'JWT_DECODE_HANDLER':
+        'planner.utils.jwt_decode_token',
+    'JWT_ALGORITHM': 'RS256',
+    'JWT_AUDIENCE': 'localhost:8080',
+    'JWT_ISSUER': 'https://lauzplan.eu.auth0.com/',
+    'JWT_AUTH_HEADER_PREFIX': 'Bearer',
+}
+
+GRAPHENE = {
+    "DJANGO_CHOICE_FIELD_ENUM_V3_NAMING": True,
+}

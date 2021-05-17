@@ -19,17 +19,14 @@ DATABASES = {
         'PASSWORD': 'azerty',
         'HOST': '127.0.0.1',
         'PORT': '5432'
-    },
-    'db_vegetables_library': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'vegetable_library_db',
-        'USER': 'postgres',
-        'PASSWORD': 'azerty',
-        'HOST': '127.0.0.1',
-        'PORT': '5432'
     }
 }
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000"
+]
+
+ALLOWED_HOSTS = [
+    "10.0.2.2",
+    "127.0.0.1"
 ]
