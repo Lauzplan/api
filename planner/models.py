@@ -18,6 +18,8 @@ from django.contrib.gis.db.models.functions import Area, AsGeoJSON, Transform
 import requests
 from shapely import wkt
 from arcgis.geometry import Geometry
+from shapely.geometry import mapping
+from shapely.ops import cascaded_union
 
 
 from functools import reduce
@@ -122,40 +124,44 @@ class Parcel(models.Model):
         return reduce(lambda acc, bed: acc + bed.area, self.beds.all(), 0)
 
     def soil_type(self):
+        parcel_geometry = wkt.loads(self.transformed.wkt)
+        geometry_map = mapping(parcel_geometry)
+
         esriPolygon = {
             "spatialReference": {
                 "wkid": 31370
             },
             "rings":
-            [[list(p) for p in r] for r in self.transformed.coords]
+            [[list(p) for p in r] for r in geometry_map["coordinates"]]
         }
 
         response = requests.get(
-            f"https://geoservices.wallonie.be/arcgis/rest/services/SOL_SOUS_SOL/CNSW__PRINC_TYPES_SOLS/MapServer/identify?f=json&geometry={esriPolygon}&tolerance=0&mapExtent={self.transformed.extent}&sr=31370&imageDisplay=1,1,1&layers=all&geometryType=esriGeometryPolygon&geometryPrecision=4"
+            f"https://geoservices.wallonie.be/arcgis/rest/services/SOL_SOUS_SOL/CNSW__PRINC_TYPES_SOLS/MapServer/identify?f=json&geometry={esriPolygon}&tolerance=0&mapExtent={parcel_geometry.bounds}&sr=31370&imageDisplay=1,1,1&layers=all&geometryType=esriGeometryPolygon&geometryPrecision=4"
         )
 
         if not response.ok:
-            raise Exception('Could not define the soil type')
+            raise 'Could not define the soil type'
 
         if "error" in response.json().keys():
-            raise Exception(response.json())
+            raise response.json()
 
         soil_type_data = {}
-        geom = wkt.loads(self.transformed.wkt)
+
         for data in response.json()["results"]:
             geometry = wkt.loads(Geometry(data["geometry"]).WKT)
+
             code = data["attributes"]["CODE"]
             soil_type_data[code] = {
                 "code": code,
                 "description": data["attributes"]["DESCRIPTION"],
                 "area": 0
             }
-            for p in geometry:
-                intersection = p.intersection(geom)
-                soil_type_data[code]["area"] += intersection.area
+            geometry = cascaded_union(geometry).buffer(0)
+            intersection = geometry.intersection(parcel_geometry)
+            soil_type_data[code]["area"] += intersection.area
 
         for val in soil_type_data.values():
-            val["proportion"] = val["area"] / geom.area
+            val["proportion"] = val["area"] / parcel_geometry.area
 
         return soil_type_data.values()
 
