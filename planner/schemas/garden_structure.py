@@ -245,7 +245,7 @@ class DeleteParcel(graphene.Mutation):
 
     def mutate(self, info, id):
         deletion = Parcel.objects.get(id=id).delete()
-        if deletion > 0:
+        if len(deletion) > 0:
             return DeleteParcel(ok=True)
 
         return DeleteParcel(ok=False)
@@ -301,7 +301,7 @@ class Query(graphene.ObjectType):
     def resolve_parcel(self, info, id):
         parcel = Parcel.objects.get(id=id)
         UserModel = get_user_model()
-        if parcel.garden.users.get(pk=UserModel.objects.last().id):
+        if parcel.garden.users.get(pk=info.context.user.pk):
             return parcel
         return None
 
