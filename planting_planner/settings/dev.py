@@ -3,8 +3,6 @@ from .defaults import *
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
-
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
 
@@ -23,10 +21,12 @@ DATABASES = {
 }
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000"
+    "http://localhost:3000",
+    "http://localhost:8080"
 ]
 
 ALLOWED_HOSTS = [
     "10.0.2.2",
-    "127.0.0.1"
+    "127.0.0.1",
+    "localhost"
 ]

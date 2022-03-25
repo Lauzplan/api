@@ -152,12 +152,6 @@ class ParcelType(DjangoObjectType):
     area = graphene.Int()
     cultivable_area = graphene.Int()
 
-    def resolve_cultivable_area(self, info):
-        return self.cultivable_area()
-
-    def resolve_area(self, info):
-        return self.area
-
     def resolve_soil_type(self, info):
         return self.soil_type()
 
@@ -170,9 +164,7 @@ class BedType(DjangoObjectType):
         model = Bed
 
     area = graphene.Int()
-
-    def resolve_area(self, info):
-        return self.area
+    total_planted_area = graphene.Int()
 
 
 class UpdateGarden(graphene.Mutation):
@@ -210,10 +202,7 @@ class CreateParcel(graphene.Mutation):
     Output = ParcelType
 
     def mutate(self, info, garden_id, name, geometry):
-        garden = Garden.objects.get(id=garden_id)
-        if garden is None:
-            return None
-        parcel = Parcel.objects.create(garden=garden,
+        parcel = Parcel.objects.create(garden_id=garden_id,
                                        name=name,
                                        geometry=geometry)
         return parcel
@@ -265,13 +254,14 @@ class SelectOrientation(graphene.Mutation):
         Bed.objects.filter(parcel__id=parcel_id).delete()
         beds_geometry = create_beds(parcel, start_segment, bed_width,
                                     bed_spacing)
-        beds = map(
-            lambda geom: Bed.objects.create(name='name',
-                                            garden=parcel.garden,
-                                            parcel=parcel,
-                                            geometry=geom), beds_geometry)
-        bed_list = list(beds)
-        return SelectOrientation(beds=bed_list)
+
+        beds = [Bed(name='name',
+                    garden=parcel.garden,
+                    parcel=parcel,
+                    geometry=geom,
+                    index=i) for (i, geom) in enumerate(beds_geometry)]
+        Bed.objects.bulk_create(beds)
+        return SelectOrientation(beds=list(beds))
 
 
 class Query(graphene.ObjectType):
@@ -281,12 +271,9 @@ class Query(graphene.ObjectType):
 
     def resolve_garden(self, info, id):
         user = info.context.user
-        print(user)
         if(user.is_superuser):
-            print("here")
             return Garden.objects.get(id=id)
-        
-        print("KO")
+
         return Garden.objects.get(users=user, id=id)
 
     def resolve_gardens(self, info):
@@ -299,11 +286,7 @@ class Query(graphene.ObjectType):
             return queryset.filter(users=user)
 
     def resolve_parcel(self, info, id):
-        parcel = Parcel.objects.get(id=id)
-        UserModel = get_user_model()
-        if parcel.garden.users.get(pk=info.context.user.pk):
-            return parcel
-        return None
+        return Parcel.objects.filter(garden__users=info.context.user).get(id=id)
 
 
 class Mutation(graphene.ObjectType):

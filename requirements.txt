@@ -13,3 +13,4 @@ django-graphene-gis-extension
 pyjwt
 drf-jwt
 djangorestframework
+python-jose
